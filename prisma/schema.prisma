@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+engineType = "library"
+}
+
+datasource db {
+  provider = "mysql"
+url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------
+// ENUMOK (Rögzített értékek)
+// ------------------------------------------------------
+
+enum CharacterType {
+  PLAYER
+  NPC
+}
+
+enum NpcAttitude {
+  FRIENDLY
+  NEUTRAL
+  HOSTILE
+}
+
+// ------------------------------------------------------
+// MODELLEK (Adatbázis táblák)
+// ------------------------------------------------------
+
+// 1. Játékmenet (Session) - Összefogja egy adott végigjátszás adatait
+model GameSession {
+  id            String   @id @default(uuid())
+  playerName    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // JSON mező: Itt tároljuk a világ beállításait (pl. { "theme": "dark fantasy", "difficulty": "hard" })
+  worldSettings Json?
+  turnCount     Int      @default(0)
+
+  // Relációk (Mik tartoznak ehhez a sessionhöz?)
+  mapCells        MapCell[]
+  characters      Character[]
+  items           Item[]
+  interactionLogs InteractionLog[]
+}
+
+// 2. Térképcella (A rács alapú világ egy mezője)
+model MapCell {
+  id               Int         @id @default(autoincrement())
+  sessionId        String
+  session          GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  coordX           Int
+  coordY           Int
+  biome            String      // pl. "erdő", "kripta", "kocsma"
+  description      String      @db.Text // AI által generált statikus leírás
+  isVisited        Boolean     @default(false)
+  
+  // JSON mező: Dinamikus környezeti változók (pl. { "door_locked": true, "is_burning": false })
+  environmentState Json?
+
+  // Relációk
+  itemsOnGround    Item[]      // Tárgyak, amik ezen a mezőn hevernek
+
+  // Egyedi kényszer: Egy sessionön belül egy (X,Y) koordináta csak egyszer létezhet!
+  @@unique([sessionId, coordX, coordY])
+}
+
+// 3. Karakterek (Játékos és NPC-k összevonva a könnyebb kezelhetőségért)
+model Character {
+  id                Int           @id @default(autoincrement())
+  sessionId         String
+  session           GameSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  type              CharacterType
+  name              String
+  
+  // Pozíció a rácson
+  coordX            Int
+  coordY            Int
+  
+  hp                Int           @default(100)
+  maxHp             Int           @default(100)
+  status            String        @default("alive") // pl. alive, dead, unconscious
+
+  // NPC specifikus mezők
+  personalityPrompt String?       @db.Text // Titkos instrukció az AI-nak (pl. "Gyáva, pénzéhes kobold")
+  attitude          NpcAttitude?
+  
+  // JSON mező: Dinamikus attribútumok és memóriák az AI számára
+  attributes        Json?
+
+  // Relációk
+  inventory         Item[]        // A karakternél lévő tárgyak
+}
+
+// 4. Tárgyak (Fegyverek, kulcsok, kincsek)
+model Item {
+  id               Int         @id @default(autoincrement())
+  sessionId        String
+  session          GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  name             String
+  description      String      @db.Text
+  
+  // JSON mező: Tárgy tulajdonságai (pl. { "damage": 5, "is_consumable": false })
+  properties       Json?
+
+  // Helyzet meghatározása: A tárgy vagy valakinél van (owner), VAGY a földön (locationCell)
+  ownerId          Int?
+  owner            Character?  @relation(fields: [ownerId], references: [id])
+  
+  locationCellId   Int?
+  locationCell     MapCell?    @relation(fields: [locationCellId], references: [id])
+}
+
+// 5. Interakciós Napló (AI Memória és History)
+model InteractionLog {
+  id               Int         @id @default(autoincrement())
+  sessionId        String
+  session          GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  turnNumber       Int
+  userInput        String      @db.Text
+  aiResponse       String      @db.Text
+  
+  // Az AI által generált, tömörített összefoglaló a prompt költség/méret csökkentése érdekében
+  summary          String?     @db.Text 
+  
+  createdAt        DateTime    @default(now())
+}
