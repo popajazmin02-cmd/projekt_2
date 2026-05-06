@@ -55,6 +55,7 @@ model MapCell {
   coordY           Int
   biome            String      // pl. "erdő", "kripta", "kocsma"
   description      String      @db.Text // AI által generált statikus leírás
+exits       String   @default("NORTH, SOUTH, EAST, WEST")
   isVisited        Boolean     @default(false)
   
   // JSON mező: Dinamikus környezeti változók (pl. { "door_locked": true, "is_burning": false })
@@ -75,11 +76,11 @@ model Character {
   
   type              CharacterType
   name              String
-  
+  description String   @default("")
   // Pozíció a rácson
   coordX            Int
   coordY            Int
-  
+  inventory String   @default("")
   hp                Int           @default(100)
   maxHp             Int           @default(100)
   status            String        @default("alive") // pl. alive, dead, unconscious
@@ -92,7 +93,7 @@ model Character {
   attributes        Json?
 
   // Relációk
-  inventory         Item[]        // A karakternél lévő tárgyak
+  items         Item[]        // A karakternél lévő tárgyak
 }
 
 // 4. Tárgyak (Fegyverek, kulcsok, kincsek)
@@ -129,4 +130,13 @@ model InteractionLog {
   summary          String?     @db.Text 
   
   createdAt        DateTime    @default(now())
+}
+
+
+model HistoryLog {
+  id        String   @id @default(uuid())
+  sessionId String
+  command   String   // Amit a játékos beírt
+  narrative String   @db.Text // Amit az AI válaszolt
+  createdAt DateTime @default(now())
 }

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Text Adventure</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+        #game-container {
+            width: 100%;
+            max-width: 900px;
+            background: #1e1e1e;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+            border: 1px solid #333;
+        }
+        h2 {
+            text-align: center; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 10px;
+            margin-top: 0;
+            color: #fff;
+        }
+
+        /* ÉLETERŐ (Legfelül) */
+        #hp-container {
+            background: #111;
+            border: 2px solid #444;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        #hp-bar-bg {
+            width: 100%; height: 25px; background-color: #333; border-radius: 4px; overflow: hidden; position: relative; border: 1px solid #222;
+        }
+        #hp-bar-fill {
+            height: 100%; background-color: #e74c3c; width: 100%; transition: width 0.3s ease-in-out;
+        }
+        #hp-text {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; color: white; text-shadow: 1px 1px 2px black;
+        }
+
+        /* FŐ ABLAK ÉS CHAT */
+        #story-box {
+            height: 350px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #0a0a0a;
+            border-radius: 8px;
+        }
+        .message { margin-bottom: 15px; line-height: 1.5; }
+        .user-cmd { color: #4caf50; font-weight: bold; }
+        .ai-resp { color: #e0e0e0; }
+        .sys-msg { color: #f44336; font-style: italic; }
+        .game-over-msg { color: #ff0000; font-weight: bold; font-size: 20px; text-align: center; margin-top: 20px; text-transform: uppercase; }
+        
+        #input-area { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        input { flex-grow: 1; padding: 12px; background: #2a2a2a; border: 1px solid #555; color: white; font-family: inherit; font-size: 16px; border-radius: 6px; }
+        select { padding: 12px; background: #2a2a2a; color: white; border: 1px solid #555; font-weight: bold; border-radius: 6px; }
+        button { padding: 12px 20px; background: #4caf50; color: white; border: none; cursor: pointer; font-weight: bold; border-radius: 6px; transition: 0.2s;}
+        button:hover { background: #45a049; }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; }
+
+        /* ÚJ: ALSÓ MŰSZERFAL (Dashboard) */
+        #dashboard {
+            display: flex;
+            gap: 15px;
+            justify-content: space-between;
+            align-items: stretch;
+        }
+        .widget {
+            flex: 1;
+            background: #111;
+            border: 2px solid #444;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .widget h3 { margin-top: 0; color: #aaa; text-align: center; font-size: 14px; margin-bottom: 10px; }
+
+        /* Widget Belső elemek */
+        #minimap-grid { display: flex; flex-direction: column; gap: 2px; }
+        .map-row { display: flex; gap: 2px; }
+        .map-cell { width: 25px; height: 25px; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 4px; }
+        
+        #inventory-list { list-style-type: none; padding: 0; margin: 0; font-size: 14px; color: #ddd; width: 100%; text-align: center; }
+        .inv-item { background: #2a2a2a; padding: 5px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #4caf50; }
+
+        #compass-grid { display: grid; grid-template-columns: 45px 45px 45px; gap: 5px; }
+        .compass-btn { width: 45px; height: 45px; background-color: #333; color: white; border: 1px solid #555; border-radius: 6px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .compass-btn:hover:not(:disabled) { background-color: #4caf50; border-color: #4caf50; }
+        .compass-btn:disabled { background-color: #1a1a1a; border-color: #333; opacity: 0.5; }
+        
+        /* Mobilra optimalizálás */
+        @media (max-width: 700px) {
+            #dashboard { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <h2>Tyrrendor is waiting for you</h2>
+    
+    <!-- ÉLETERŐ (Kiemelt helyen felül) -->
+    <div id="hp-container">
+        <div id="hp-bar-bg">
+            <div id="hp-bar-fill"></div>
+            <div id="hp-text">100 / 100 HP</div>
+        </div>
+    </div>
+
+    <!-- TÖRTÉNET ABLAK -->
+    <div id="story-box">
+        <div class="message sys-msg">Válaszd ki a világot, és indíts új játékot!</div>
+    </div>
+
+    <!-- BEKÜLDÉS ÉS MŰFAJ -->
+    <div id="input-area">
+        <input type="text" id="command-input" placeholder="What are you gonna do?" disabled>
+        <button id="send-btn" disabled>Küldés</button>
+        
+        <select id="genre-select">
+            <option value="Dark Fantasy">⚔️ Dark Fantasy</option>
+            <option value="Sci-Fi / Cyberpunk">🤖 Cyberpunk</option>
+            <option value="Zombie Apocalypse">🧟 Zombie Apokalipszis</option>
+            <option value="Wild West">🤠 Vadnyugat</option>
+            <option value="Lovecraftian Horror">🐙 Kozmikus Horror</option>
+        </select>
+        <button id="new-game-btn">Új Játék</button>
+    </div>
+
+    <!-- ALSÓ MŰSZERFAL -->
+    <div id="dashboard">
+        <!-- Minimap -->
+        <div class="widget" id="minimap-container">
+            <h3>🗺️ Térkép</h3>
+            <div id="minimap-grid">
+                <div style="color: #666; font-style: italic; font-size: 12px; text-align: center;">Még nincs adat...</div>
+            </div>
+        </div>
+
+        <!-- Hátizsák -->
+        <div class="widget" id="inventory-container">
+            <h3>🎒 Hátizsák</h3>
+            <ul id="inventory-list">
+                <li style="text-align: center; color: #666; font-style: italic;">Üres</li>
+            </ul>
+        </div>
+
+        <!-- Iránytű -->
+        <div class="widget" id="compass-container">
+            <h3>🧭 Navigáció</h3>
+            <div id="compass-grid">
+                <div></div> 
+                <button class="compass-btn" id="btn-north" onclick="quickCommand('I walk NORTH')" title="Észak" disabled>⬆️</button>
+                <div></div> 
+                <button class="compass-btn" id="btn-west" onclick="quickCommand('I walk WEST')" title="Nyugat" disabled>⬅️</button>
+                <button class="compass-btn" id="btn-look" onclick="quickCommand('I look around')" title="Körülnézek" disabled>👀</button>
+                <button class="compass-btn" id="btn-east" onclick="quickCommand('I walk EAST')" title="Kelet" disabled>➡️</button>
+                <div></div> 
+                <button class="compass-btn" id="btn-south" onclick="quickCommand('I walk SOUTH')" title="Dél" disabled>⬇️</button>
+                <div></div> 
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentSessionId = null;
+    const storyBox = document.getElementById('story-box');
+    const input = document.getElementById('command-input');
+    const sendBtn = document.getElementById('send-btn');
+    const newGameBtn = document.getElementById('new-game-btn');
+    const minimapGrid = document.getElementById('minimap-grid');
+    const inventoryList = document.getElementById('inventory-list');
+    const compassBtns = document.querySelectorAll('.compass-btn');
+    const hpBarFill = document.getElementById('hp-bar-fill');
+    const hpText = document.getElementById('hp-text');
+
+    function addMessage(text, className) {
+        const div = document.createElement('div');
+        div.className = `message ${className}`;
+        div.innerText = text;
+        storyBox.appendChild(div);
+        storyBox.scrollTop = storyBox.scrollHeight;
+    }
+
+    function setUIEnabled(enabled) {
+        input.disabled = !enabled;
+        sendBtn.disabled = !enabled;
+        compassBtns.forEach(btn => btn.disabled = !enabled);
+    }
+
+    function renderHp(currentHp, maxHp) {
+        if (currentHp === undefined || maxHp === undefined) return;
+        const percentage = Math.max(0, Math.min(100, (currentHp / maxHp) * 100));
+        hpBarFill.style.width = `${percentage}%`;
+        hpText.innerText = `${currentHp} / ${maxHp} HP`;
+        if (percentage > 50) hpBarFill.style.backgroundColor = '#e74c3c'; 
+        else if (percentage > 20) hpBarFill.style.backgroundColor = '#e67e22'; 
+        else hpBarFill.style.backgroundColor = '#c0392b'; 
+    }
+
+    function renderInventory(items) {
+        inventoryList.innerHTML = ''; 
+        if (!items || items.length === 0) {
+            inventoryList.innerHTML = '<li style="text-align: center; color: #666; font-style: italic;">Üres</li>';
+            return;
+        }
+        items.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'inv-item';
+            li.innerText = item;
+            inventoryList.appendChild(li);
+        });
+    }
+
+    function renderMinimap(mapData, playerPos) {
+        if (!mapData || mapData.length === 0) return;
+        minimapGrid.innerHTML = ''; 
+        const xs = mapData.map(c => c.coordX); const ys = mapData.map(c => c.coordY);
+        const minX = Math.min(...xs) - 1; const maxX = Math.max(...xs) + 1;
+        const minY = Math.min(...ys) - 1; const maxY = Math.max(...ys) + 1;
+
+        for (let y = maxY; y >= minY; y--) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'map-row';
+            for (let x = minX; x <= maxX; x++) {
+                const cellData = mapData.find(c => c.coordX === x && c.coordY === y);
+                const isPlayerHere = playerPos.x === x && playerPos.y === y;
+                const cellDiv = document.createElement('div');
+                cellDiv.className = 'map-cell';
+
+                if (isPlayerHere) {
+                    cellDiv.style.backgroundColor = '#e74c3c'; cellDiv.innerText = '🧑'; cellDiv.title = cellData ? cellData.biome : "Itt vagy!";
+                } else if (cellData) {
+                    cellDiv.style.backgroundColor = '#2ecc71'; cellDiv.title = cellData.biome; 
+                } else {
+                    cellDiv.style.backgroundColor = '#222'; 
+                }
+                rowDiv.appendChild(cellDiv);
+            }
+            minimapGrid.appendChild(rowDiv);
+        }
+    }
+
+    newGameBtn.onclick = async () => {
+        addMessage("Világ generálása folyamatban (1-2 másodperc)...", "sys-msg");
+        minimapGrid.innerHTML = '<div style="color: #666; font-size: 12px;">Generálás...</div>';
+        renderInventory([]); renderHp(100, 100); 
+        
+        const selectedGenre = document.getElementById('genre-select').value;
+        newGameBtn.disabled = true; // Gomb letiltása amíg tölt
+
+        try {
+            const res = await fetch('/api/new-game', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: selectedGenre }) 
+            });
+            const data = await res.json();
+            
+            if (data.error) {
+                addMessage("Szerver hiba: " + data.error, "sys-msg");
+                newGameBtn.disabled = false;
+                return;
+            }
+
+            currentSessionId = data.sessionId;
+            storyBox.innerHTML = '';
+            
+            addMessage(`[ Műfaj: ${selectedGenre} ]`, "sys-msg");
+            addMessage(data.startingText || "Felébredtél...", "ai-resp");
+            
+            renderMinimap([{ coordX: 0, coordY: 0, biome: "Start" }], { x: 0, y: 0 });
+            setUIEnabled(true);
+            input.focus();
+        } catch (e) {
+            addMessage("Hiba a szerver elérésekor! Ellenőrizd, fut-e a szerver.", "sys-msg");
+        }
+        newGameBtn.disabled = false;
+    };
+
+    function quickCommand(cmd) {
+        if (!currentSessionId || input.disabled) return;
+        input.value = cmd;
+        sendCommand();
+    }
+
+    async function sendCommand() {
+        const cmd = input.value.trim();
+        if (!cmd || !currentSessionId) return;
+
+        addMessage(`> ${cmd}`, "user-cmd");
+        input.value = '';
+        setUIEnabled(false);
+        addMessage("... (Az AI gondolkodik) ...", "sys-msg");
+
+        try {
+            const res = await fetch('/api/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: currentSessionId, command: cmd })
+            });
+            const data = await res.json();
+            
+            storyBox.removeChild(storyBox.lastChild); 
+            
+            if (data.status === 'GAME_OVER') {
+                addMessage(data.narrative, "game-over-msg");
+                renderHp(0, data.maxHp);
+                return; 
+            }
+
+            addMessage(data.narrative, "ai-resp");
+            if(data.currentLocation) addMessage(`[X:${data.currentLocation.x}, Y:${data.currentLocation.y}]`, "sys-msg");
+            if (data.map && data.currentLocation) renderMinimap(data.map, data.currentLocation);
+            if (data.inventory !== undefined) renderInventory(data.inventory);
+            if (data.hp !== undefined && data.maxHp !== undefined) renderHp(data.hp, data.maxHp);
+
+        } catch (e) {
+            storyBox.removeChild(storyBox.lastChild);
+            addMessage("Hiba történt a kommunikáció során.", "sys-msg");
+        }
+        setUIEnabled(true);
+        input.focus();
+    }
+
+    sendBtn.onclick = sendCommand;
+    input.onkeypress = (e) => { if (e.key === 'Enter') sendCommand(); };
+</script>
+
+</body>
+</html>

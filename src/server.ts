@@ -1,46 +1,45 @@
-import 'dotenv/config';
 import express from 'express';
+import path from 'path';
 import { GameService } from './gameService';
 
 const app = express();
-app.use(express.json()); // Hogy a szerver tudjon JSON-t olvasni
-
+const port = 3000;
 const gameService = new GameService();
 
-// Egy végpont a parancsok fogadására
-app.post('/api/action', async (req, res) => {
+app.use(express.json()); // Ez KÖTELEZŐ, hogy értse a weblapról jövő JSON-t!
+app.use(express.static(path.join(__dirname, '../public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// JAVÍTOTT Új játék végpont (Soha nem fagy le)
+app.post('/api/new-game', async (req, res) => {
   try {
-    const { sessionId, command } = req.body;
-
-    if (!sessionId || !command) {
-       res.status(400).json({ error: "Hiányzó sessionId vagy command!" });
-       return;
-    }
-
-    // Meghívjuk a logikánkat
-    const result = await gameService.processTurn(sessionId, command);
-    
-    // Visszaküldjük a választ a játékosnak
+    const { theme } = req.body || {};
+    const result = await gameService.createTestSession(theme || 'Dark Fantasy');
     res.json(result);
-
-  } catch (error: any) {
-    console.error("Hiba történt:", error);
-    res.status(500).json({ error: error.message });
+  } catch (error) {
+    console.error("Hiba az új játék indításakor:", error);
+    // Ha hiba van, akkor is küldünk választ, hogy a weblap ne töltsön végtelenül!
+    res.status(500).json({ error: 'Failed to create game session' });
   }
 });
 
-// Teszt végpont: Csinálunk egy új játékot, hogy legyen egy Session ID-nk
-app.post('/api/new-game', async (req, res) => {
-    try {
-        const newSessionId = await gameService.createTestSession();
-        res.json({ message: "Új játék elindítva!", sessionId: newSessionId });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
+app.post('/api/action', async (req, res) => {
+  try {
+    const { sessionId, command } = req.body;
+    if (!sessionId || !command) {
+      return res.status(400).json({ error: 'Missing sessionId or command' });
     }
+    const result = await gameService.processTurn(sessionId, command);
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
-// Szerver indítása a 3000-es porton
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Szerver fut: http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`🚀 Szerver fut: http://localhost:${port}`);
 });
